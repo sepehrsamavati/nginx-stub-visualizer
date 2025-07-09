@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server connections status</title>
+
+    <style>
+        :root {
+            --foreground-color: #1e1e1e;
+            --background-color: #e5e5e5;
+            --card-background-color: #ffffff;
+            --btn-group-background-color: #dcdcdc;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --foreground-color: #bdbdbd;
+                --background-color: #000000;
+                --card-background-color: #1e1e1e;
+                --btn-group-background-color: #111111;
+            }
+        }
+
+        * {
+            outline: none;
+            box-sizing: border-box;
+        }
+
+        .w-100 {
+            width: 100%;
+        }
+
+        #current-connections-chart {
+            width: 100%;
+            min-height: 200px;
+            max-height: 50vh;
+        }
+
+        body {
+            font-family: Verdana, Geneva, Tahoma, sans-serif;
+            color: var(--foreground-color);
+            background-color: var(--background-color);
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin: 0;
+            justify-content: space-between;
+        }
+
+        button,
+        input {
+            color: inherit;
+            border: none;
+            background-color: var(--card-background-color);
+            padding: 12px;
+            text-align: center;
+            transition: 0.4s;
+            width: auto;
+            display: inline-block;
+            border-radius: 100em;
+        }
+
+        button:hover {
+            filter: invert(0.15);
+        }
+
+        button:not(:disabled) {
+            cursor: pointer;
+        }
+
+        button:disabled {
+            pointer-events: none;
+            opacity: 0.4;
+        }
+
+        .button-group {
+            border-radius: 4px;
+            display: inline-flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 2px;
+            padding: 4px;
+            background-color: var(--btn-group-background-color);
+        }
+
+        .button-group>* {
+            border-radius: 1px;
+        }
+
+        main {
+            max-width: 500px;
+            text-align: center;
+            margin-inline: auto;
+            overflow: auto;
+        }
+
+        .card {
+            background-color: var(--card-background-color);
+            padding: 16px;
+        }
+
+        .card-row {
+            display: flex;
+            gap: 4px;
+            margin-block: 4px;
+        }
+
+        .card-row>.card {
+            flex-grow: 1;
+        }
+
+        .card-row>.card .title {
+            font-size: 1.1em;
+        }
+
+        .card-row>.card .number {
+            font-size: 0.8em;
+        }
+
+        .card.error {
+            transition: 0.5s;
+            opacity: 0;
+            animation-name: fade-in;
+            animation-duration: 0.8s;
+            animation-iteration-count: 1;
+            animation-fill-mode: forwards;
+            color: rgba(151, 45, 45, 0.95);
+            background-color: rgba(255, 0, 0, 0.35);
+            margin-block: 2px;
+        }
+
+        @keyframes fade-in {
+            0% {
+                opacity: 0;
+            }
+
+            100% {
+                opacity: 1;
+            }
+        }
+
+        button.on,
+        button.off {
+            position: relative;
+            overflow: hidden;
+        }
+
+        button.on::after,
+        button.off::after {
+            content: '';
+            display: block;
+            position: absolute;
+            height: 4px;
+            inset-inline-start: 0;
+            width: 100%;
+            bottom: 0;
+        }
+
+        button.on::after {
+            background-color: rgb(8, 121, 8);
+        }
+
+        button.off::after {
+            background-color: rgb(152, 6, 6);
+        }
+
+        .errors {
+            margin-top: 50px;
+        }
+
+        .errors:empty {
+            display: none;
+        }
+
+        footer {
+            padding: 14px;
+        }
+
+        @media (max-width:550px) {
+            html {
+                font-size: 3vw;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <header></header>
+
+    <main>
+        <div class="card w-100">
+            <canvas id="current-connections-chart"></canvas>
+            <h2 class="title">Current</h2>
+            <div class="number" id="stat-activeConnections">-</div>
+        </div>
+
+        <div class="card-row">
+            <div class="card">
+                <h2 class="title">Total</h2>
+                <div class="number" id="stat-serverRequests">-</div>
+            </div>
+            <div class="card">
+                <h2 class="title">Accepted</h2>
+                <div class="number" id="stat-acceptedRequests">-</div>
+            </div>
+            <div class="card">
+                <h2 class="title">Handled</h2>
+                <div class="number" id="stat-handledRequests">-</div>
+            </div>
+        </div>
+
+        <div class="card-row">
+            <div class="card">
+                <h2 class="title">Reading</h2>
+                <div class="number" id="stat-readingConnections">-</div>
+            </div>
+            <div class="card">
+                <h2 class="title">Writing</h2>
+                <div class="number" id="stat-writingConnections">-</div>
+            </div>
+            <div class="card">
+                <h2 class="title">Waiting</h2>
+                <div class="number" id="stat-waitingConnections">-</div>
+            </div>
+        </div>
+
+        <div class="errors"></div>
+    </main>
+
+    <footer>
+        <div class="button-group">
+            <button id="login-button">Login</button>
+            <button id="toggle-interval-button" class="on">Start</button>
+            <input type="text" maxlength="10000" id="stub-url-input" placeholder="Nginx Stub URL" />
+            <input type="number" step="500" min="500" max="60000" id="interval-delay-input"
+                placeholder="Polling rate (ms)" />
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        (() => {
+            // @ts-check
+
+            /** Zero as non active */
+            let fetchIntervalId = 0;
+            let fetchLock = false;
+            let intervalDelay = Math.max(0, Math.min(60e3, Number.parseInt(window.localStorage.getItem("intervalDelay")) || 2e3));
+            let stubUrl = window.localStorage.getItem("stubUrl") ?? "/nginx_status";
+
+            const chartDataLimit = 50;
+            const ctx = document.getElementById('current-connections-chart').getContext('2d');
+            // Create vertical gradient from green (bottom) to red (top)
+            const gradient = ctx.createLinearGradient(0, 0, 0, 800);
+            gradient.addColorStop(0, 'orange');
+            gradient.addColorStop(0.5, 'green');
+            const chartData = {
+                labels: [],  // time labels like "10:00", "10:01" etc
+                datasets: [{
+                    label: 'Connections',
+                    backgroundColor: gradient,
+                    // backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    fill: true,
+                    data: [],
+                    tension: 0.3,
+                    borderColor: window.getComputedStyle(document.documentElement).getPropertyValue('--foreground-color') || "gray",
+                }]
+            };
+            const chart = new Chart(ctx, {
+                type: 'line',
+                data: chartData,
+                options: {
+                    animation: true,  // disable animation for live updates
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        x: { title: { display: false, text: 'Time' } },
+                        y: { title: { display: false, text: 'Connections' } }
+                    },
+                }
+            });
+
+            /**
+             * @typedef {{ activeConnections: number; readingConnections: number; writingConnections: number; waitingConnections: number; serverRequests: number; acceptedRequests: number; handledRequests: number; }} Stats
+             */
+
+            /**
+             * @param {Stats | null} stats
+             */
+            const render = (stats = null) => {
+                if (!stats) return;
+                Object.entries(stats)
+                    .forEach(([key, value]) => {
+                        const el = document.querySelector(`#stat-${key}`);
+                        if (el)
+                            el.innerText = value.toLocaleString();
+                    });
+
+                chartData.labels.push(new Date().toLocaleTimeString());
+                chartData.datasets[0].data.push(stats.activeConnections);
+
+                // Keep only last 20 points
+                if (chartData.labels.length > 20) {
+                    chartData.labels.shift();
+                    chartData.datasets[0].data.shift();
+                }
+
+                if (chartData.labels.length > chartDataLimit) {
+                    chartData.labels.splice(0, chartData.labels.length - chartDataLimit);
+                    chartData.datasets[0].data.splice(0, chartData.datasets[0].data.length - chartDataLimit);
+                }
+
+                chart.update();
+            };
+
+            /**
+             * @param {string | Error} message
+             */
+            const addError = (err) => {
+                const card = document.createElement("div");
+                card.className = "card error";
+                card.innerText = (err instanceof Error || err instanceof ErrorEvent) ? `${err.name || '-'} / ${err.message}` : err;
+                document.querySelector(".errors").prepend(card);
+            };
+
+            const fetchDataAndRender = () => {
+                if (fetchLock) return;
+                fetchLock = true;
+
+                fetch(stubUrl)
+                    .then(r => r.text())
+                    .then(res => {
+                        const lines = res.trim().split('\n');
+
+                        if (lines[1] !== "server accepts handled requests")
+                            throw new TypeError("Second line of data is invalid");
+
+                        const totalConnections = lines[2].trim().split(/\s/).map(Number).filter(Number.isInteger);
+                        if (totalConnections.length !== 3)
+                            throw new TypeError("Fourth line of data is invalid");
+
+                        const serverRequests = totalConnections[0];
+                        const acceptedRequests = totalConnections[1];
+                        const handledRequests = totalConnections[2];
+
+                        const activeConnections = Number(lines[0].split(':')[1]);
+
+                        const readingConnections = Number(lines[3].trim().match(/Reading: (\d+)/)?.at(0).trim().split(' ')[1]);
+                        const writingConnections = Number(lines[3].trim().match(/Writing: (\d+)/)?.at(0).trim().split(' ')[1]);
+                        const waitingConnections = Number(lines[3].trim().match(/Waiting: (\d+)/)?.at(0).trim().split(' ')[1]);
+
+                        render({
+                            activeConnections,
+                            readingConnections,
+                            writingConnections,
+                            waitingConnections,
+                            serverRequests,
+                            acceptedRequests,
+                            handledRequests,
+                        });
+                    })
+                    .catch(err => {
+                        addError(err);
+                        console.log(console.error);
+                    })
+                    .finally(() => fetchLock = false);
+            };
+
+            const loadAsIframeToAuthenticate = () => {
+                const _iframe = document.createElement("iframe");
+                _iframe.src = stubUrl;
+                _iframe.hidden = true;
+                document.body.append(_iframe);
+            };
+
+
+            document.querySelector('#login-button')?.addEventListener("click", function () {
+                this.disabled = true;
+                loadAsIframeToAuthenticate();
+            });
+
+            document.querySelector('#toggle-interval-button')?.addEventListener("click", function () {
+                const active = !fetchIntervalId;
+                this.innerText = active ? "Stop" : "Start";
+                this.className = active ? "off" : "on";
+                if (active)
+                    fetchIntervalId = window.setInterval(fetchDataAndRender, intervalDelay);
+                else {
+                    window.clearInterval(fetchIntervalId);
+                    fetchIntervalId = 0
+                }
+            });
+
+            document.querySelector("#stub-url-input")?.addEventListener("input", e => {
+                stubUrl = e.target.value;
+                window.localStorage.setItem("stubUrl", stubUrl);
+            });
+
+            document.querySelector("#interval-delay-input")?.addEventListener("input", e => {
+                const newVal = Number.parseInt(e.target.value);
+
+                // validate
+                if (!Number.isNaN(newVal) && newVal > 0 && newVal <= 60e3)
+                    intervalDelay = newVal;
+
+                // apply to UI
+                e.target.value = intervalDelay;
+
+                // persist
+                window.localStorage.setItem("intervalDelay", intervalDelay);
+
+                // reset
+                if (fetchIntervalId) {
+                    window.clearInterval(fetchIntervalId);
+                    fetchIntervalId = window.setInterval(fetchDataAndRender, intervalDelay);
+                }
+            });
+
+            window.addEventListener("error", err => {
+                addError(err);
+            });
+
+            document.querySelector("#stub-url-input").value = stubUrl;
+            document.querySelector("#interval-delay-input").value = intervalDelay;
+        })();
+    </script>
+</body>
+
+</html>
