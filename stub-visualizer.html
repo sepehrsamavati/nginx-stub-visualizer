@@ -145,6 +145,35 @@
             }
         }
 
+        .fetching-data-indicator {
+            position: fixed;
+            width: 100%;
+            top: 0;
+            left: 0;
+            height: 1px;
+            animation-timing-function: cubic-bezier(0.895, 0.03, 0.685, 0.22);
+            animation-name: bg-gradient-move;
+            animation-duration: 2s;
+            animation-iteration-count: infinite;
+            background-image: linear-gradient(to left, transparent, green, transparent);
+            background-size: 100vw 100%;
+            display: none;
+        }
+
+        .fetching-data-indicator.show {
+            display: block;
+        }
+
+        @keyframes bg-gradient-move {
+            0% {
+                background-position-x: 0vw;
+            }
+
+            100% {
+                background-position-x: 100vw;
+            }
+        }
+
         button.on,
         button.off {
             position: relative;
@@ -178,7 +207,24 @@
             display: none;
         }
 
+        .number-selector {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .number-selector>input {
+            padding: initial;
+        }
+
+        .version {
+            writing-mode: sideways-lr;
+            font-size: 0.8em;
+        }
+
         footer {
+            text-align: center;
             padding: 14px;
         }
 
@@ -192,7 +238,9 @@
 
 <body>
 
-    <header></header>
+    <header>
+        <div class="fetching-data-indicator"></div>
+    </header>
 
     <main>
         <div class="card w-100">
@@ -236,18 +284,30 @@
 
     <footer>
         <div class="button-group">
+            <div class="version"></div>
             <button id="login-button">Login</button>
-            <button id="toggle-interval-button" class="on">Start</button>
+            <button id="toggle-interval-button" class="on">▶️ Start</button>
             <input type="text" maxlength="10000" id="stub-url-input" placeholder="Nginx Stub URL" />
-            <input type="number" step="500" min="500" max="60000" id="interval-delay-input"
-                placeholder="Polling rate (ms)" />
+            <div class="number-selector">
+                <input type="range" step="500" min="500" max="5000" id="interval-delay-input" />
+                <span></span>
+            </div>
+            <div class="number-selector">
+                <input type="range" step="1" min="3" max="500" id="chart-data-count-input" />
+                <span></span>
+            </div>
         </div>
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
+        const stubUrlInput = document.querySelector("#stub-url-input");
+        const intervalDelayInput = document.querySelector("#interval-delay-input");
+        const chartDataCountInput = document.querySelector("#chart-data-count-input");
         (() => {
             // @ts-check
+
+            const version = "v1.0.0";
 
             /** Zero as non active */
             let fetchIntervalId = 0;
@@ -255,7 +315,7 @@
             let intervalDelay = Math.max(0, Math.min(60e3, Number.parseInt(window.localStorage.getItem("intervalDelay")) || 2e3));
             let stubUrl = window.localStorage.getItem("stubUrl") ?? "/nginx_status";
 
-            const chartDataLimit = 50;
+            let chartDataLimit = Math.max(3, Math.min(500, Number.parseInt(window.localStorage.getItem("chartDataLimit")) || 50));
             const ctx = document.getElementById('current-connections-chart').getContext('2d');
             // Create vertical gradient from green (bottom) to red (top)
             const gradient = ctx.createLinearGradient(0, 0, 0, 800);
@@ -392,33 +452,56 @@
 
             document.querySelector('#toggle-interval-button')?.addEventListener("click", function () {
                 const active = !fetchIntervalId;
-                this.innerText = active ? "Stop" : "Start";
+                this.innerText = active ? "⏹️ Stop" : "▶️ Start";
                 this.className = active ? "off" : "on";
-                if (active)
+                if (active) {
+                    document.querySelector(".fetching-data-indicator").classList.add("show");
                     fetchIntervalId = window.setInterval(fetchDataAndRender, intervalDelay);
+                }
                 else {
+                    document.querySelector(".fetching-data-indicator").classList.remove("show");
                     window.clearInterval(fetchIntervalId);
                     fetchIntervalId = 0
                 }
             });
 
-            document.querySelector("#stub-url-input")?.addEventListener("input", e => {
+            stubUrlInput?.addEventListener("input", e => {
                 stubUrl = e.target.value;
                 window.localStorage.setItem("stubUrl", stubUrl);
             });
 
-            document.querySelector("#interval-delay-input")?.addEventListener("input", e => {
+            intervalDelayInput?.addEventListener("input", e => {
                 const newVal = Number.parseInt(e.target.value);
 
                 // validate
-                if (!Number.isNaN(newVal) && newVal > 0 && newVal <= 60e3)
+                if (!Number.isNaN(newVal) && newVal > 0 && newVal <= 10e3)
                     intervalDelay = newVal;
 
                 // apply to UI
-                e.target.value = intervalDelay;
+                intervalDelayInput.parentElement.querySelector('span').innerText = `⏱️ ${(intervalDelay / 1e3).toLocaleString().padEnd(3, '.0')}s`;
 
                 // persist
                 window.localStorage.setItem("intervalDelay", intervalDelay);
+
+                // reset
+                if (fetchIntervalId) {
+                    window.clearInterval(fetchIntervalId);
+                    fetchIntervalId = window.setInterval(fetchDataAndRender, intervalDelay);
+                }
+            });
+
+            chartDataCountInput?.addEventListener("input", e => {
+                const newVal = Number.parseInt(e.target.value);
+
+                // validate
+                if (!Number.isNaN(newVal) && newVal >= 3 && newVal <= 500)
+                    chartDataLimit = newVal;
+
+                // apply to UI
+                chartDataCountInput.parentElement.querySelector('span').innerText = `📊 ${chartDataLimit.toLocaleString()}`;
+
+                // persist
+                window.localStorage.setItem("chartDataLimit", chartDataLimit);
 
                 // reset
                 if (fetchIntervalId) {
@@ -431,8 +514,14 @@
                 addError(err);
             });
 
-            document.querySelector("#stub-url-input").value = stubUrl;
-            document.querySelector("#interval-delay-input").value = intervalDelay;
+            stubUrlInput.value = stubUrl;
+            intervalDelayInput.value = intervalDelay;
+            chartDataCountInput.value = chartDataLimit;
+
+            intervalDelayInput.dispatchEvent(new Event("input"));
+            chartDataCountInput.dispatchEvent(new Event("input"));
+
+            document.querySelector(".version").innerText = version;
         })();
     </script>
 </body>
